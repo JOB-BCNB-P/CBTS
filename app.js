@@ -5,7 +5,7 @@
 
 /* ====== 1) ตั้งค่า ====== */
 // วาง Web app URL ที่ลงท้ายด้วย /exec ของคุณตรงนี้
-const APP_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbygmzJSiM7mNOqkrWfpNy2oJDY8JFCUemDYo4CRPtGx0Cyocelqk8NAStjrJHtEMV6xUA/exec';
+const APP_SCRIPT_URL = 'https://script.google.com/macros/s/XXXXXXXXXXXX/exec';
 
 // สาขา/ภาคเรียน ดึงจากข้อมูลจริงในชีต (รวมค่าที่เคยมีในรายวิชาทั้งหมด)
 // ฟอร์มใช้แบบพิมพ์ได้ + รายการแนะนำ จึงเพิ่มค่าใหม่ได้แม้ชีตยังว่าง
@@ -15,6 +15,19 @@ function getDepartments() {
 function getSemesters() {
   return [...new Set(STATE.courses.map(c => c.semester).filter(Boolean))].sort();
 }
+// ปีงบประมาณ ดึงจากข้อมูลจริง (เรียงปีล่าสุดก่อน)
+function getFiscalYears() {
+  const set = new Set();
+  STATE.budgets.forEach(b => { if (b.fiscalYear) set.add(String(b.fiscalYear)); });
+  STATE.expenses.forEach(e => { if (e.fiscalYear) set.add(String(e.fiscalYear)); });
+  return [...set].sort().reverse();
+}
+// ปีงบประมาณไทยปัจจุบัน (เริ่ม 1 ต.ค.) — ใช้เป็นค่าเริ่มต้นของฟอร์ม
+function currentThaiFiscalYear() {
+  const now = new Date();
+  const be = now.getFullYear() + 543;
+  return String(now.getMonth() >= 9 ? be + 1 : be); // ต.ค. (เดือนที่ 10) ขึ้นไป = ปีงบถัดไป
+}
 
 /* ====== 2) สถานะแอป (ข้อมูลจริงจาก backend) ====== */
 const STATE = {
@@ -22,8 +35,21 @@ const STATE = {
   courses: [],
   categories: [],
   budgets: [],
-  expenses: []
+  expenses: [],
+  activeFiscalYear: '' // '' = ทุกปีงบ
 };
+
+// งบประมาณ/การใช้จ่าย ที่ผ่านตัวกรองปีงบที่เลือกอยู่
+function activeBudgets() {
+  return STATE.activeFiscalYear
+    ? STATE.budgets.filter(b => String(b.fiscalYear) === String(STATE.activeFiscalYear))
+    : STATE.budgets;
+}
+function activeExpenses() {
+  return STATE.activeFiscalYear
+    ? STATE.expenses.filter(e => String(e.fiscalYear) === String(STATE.activeFiscalYear))
+    : STATE.expenses;
+}
 
 let currentUser = null;
 let sidebarOpen = true;
@@ -69,8 +95,8 @@ async function loadAll() {
   STATE.users      = (users || []);
   STATE.courses    = (courses || []).map(c => ({ ...c, hours: num(c.hours) }));
   STATE.categories = (categories || []).map(c => ({ ...c, active: toBool(c.active) }));
-  STATE.budgets    = (budgets || []).map(b => ({ ...b, allocatedAmount: num(b.allocatedAmount), ratePerHour: num(b.ratePerHour) }));
-  STATE.expenses   = (expenses || []).map(e => ({ ...e, hours: num(e.hours), amount: num(e.amount) }));
+  STATE.budgets    = (budgets || []).map(b => ({ ...b, allocatedAmount: num(b.allocatedAmount), ratePerHour: num(b.ratePerHour), fiscalYear: b.fiscalYear != null ? String(b.fiscalYear) : '' }));
+  STATE.expenses   = (expenses || []).map(e => ({ ...e, hours: num(e.hours), amount: num(e.amount), fiscalYear: e.fiscalYear != null ? String(e.fiscalYear) : '' }));
 }
 
 function showLoading(show) {
@@ -83,6 +109,7 @@ async function mutate(fn, successMsg) {
   try {
     await fn();
     await loadAll();
+    renderFiscalBar();
     renderPage(currentPage);
     if (successMsg) showToast(successMsg);
   } catch (err) {
@@ -132,18 +159,18 @@ function canManageBudget(){ return ['admin', 'academic'].includes(currentUser?.r
 /* ====== 6) การคำนวณ ====== */
 function getExpensesForBudget(budgetId) { return STATE.expenses.filter(e => e.budgetId === budgetId); }
 function getTotalSpent(budgetId)        { return getExpensesForBudget(budgetId).reduce((s, e) => s + num(e.amount), 0); }
-function getCourseExpenses(courseId)    { return STATE.expenses.filter(e => e.courseId === courseId); }
-function getCourseBudgets(courseId)     { return STATE.budgets.filter(b => b.courseId === courseId); }
+function getCourseExpenses(courseId)    { return activeExpenses().filter(e => e.courseId === courseId); }
+function getCourseBudgets(courseId)     { return activeBudgets().filter(b => b.courseId === courseId); }
 function getCourseTotalAllocated(id)    { return getCourseBudgets(id).reduce((s, b) => s + num(b.allocatedAmount), 0); }
 function getCourseTotalSpent(id)        { return getCourseExpenses(id).reduce((s, e) => s + num(e.amount), 0); }
 function getDepartmentBudgets(dept) {
   const ids = STATE.courses.filter(c => c.department === dept).map(c => c.id);
-  return STATE.budgets.filter(b => ids.includes(b.courseId));
+  return activeBudgets().filter(b => ids.includes(b.courseId));
 }
 function getDepartmentAllocated(dept) { return getDepartmentBudgets(dept).reduce((s, b) => s + num(b.allocatedAmount), 0); }
 function getDepartmentSpent(dept) {
   const ids = STATE.courses.filter(c => c.department === dept).map(c => c.id);
-  return STATE.expenses.filter(e => ids.includes(e.courseId)).reduce((s, e) => s + num(e.amount), 0);
+  return activeExpenses().filter(e => ids.includes(e.courseId)).reduce((s, e) => s + num(e.amount), 0);
 }
 function getRoleName(role) {
   const names = { admin: 'ผู้ดูแลระบบ', academic: 'เจ้าหน้าที่วิชาการ', secretary: 'เลขาสาขา', teacher: 'อาจารย์/รอง ผอ.' };
@@ -170,6 +197,7 @@ async function handleLogin(e) {
     document.getElementById('main-app').classList.remove('hidden');
     document.getElementById('user-info').textContent = `${user.fullName} (${getRoleName(user.role)})`;
     buildNav();
+    renderFiscalBar();
     navigateTo('dashboard');
     showToast(`ยินดีต้อนรับ ${user.fullName}`);
   } catch (e2) {
@@ -182,14 +210,60 @@ async function handleLogin(e) {
   }
 }
 
+// เข้าชมแบบอาจารย์ (ไม่ต้องเข้าสู่ระบบ) — อ่านอย่างเดียว
+async function enterAsGuest() {
+  currentUser = { id: 'guest', username: 'guest', fullName: 'อาจารย์ (เข้าชม)', role: 'teacher', department: 'ทั้งหมด' };
+  showLoading(true);
+  document.getElementById('login-error').classList.add('hidden');
+  try {
+    await loadAll();
+    document.getElementById('login-page').classList.add('hidden');
+    document.getElementById('main-app').classList.remove('hidden');
+    document.getElementById('user-info').textContent = `${currentUser.fullName} · อ่านอย่างเดียว`;
+    buildNav();
+    renderFiscalBar();
+    navigateTo('dashboard');
+  } catch (e2) {
+    currentUser = null;
+    const err = document.getElementById('login-error');
+    err.classList.remove('hidden');
+    err.textContent = e2.message;
+  } finally {
+    showLoading(false);
+  }
+}
+
 function handleLogout() {
   currentUser = null;
   STATE.users = []; STATE.courses = []; STATE.categories = []; STATE.budgets = []; STATE.expenses = [];
+  STATE.activeFiscalYear = '';
+  const bar = document.getElementById('fy-bar');
+  if (bar) { bar.classList.add('hidden'); bar.innerHTML = ''; }
   document.getElementById('main-app').classList.add('hidden');
   document.getElementById('login-page').classList.remove('hidden');
   document.getElementById('username').value = '';
   document.getElementById('password').value = '';
   document.getElementById('login-error').classList.add('hidden');
+}
+
+// แถบเลือกปีงบประมาณบนหัวเรื่อง
+function renderFiscalBar() {
+  const bar = document.getElementById('fy-bar');
+  if (!bar) return;
+  const years = getFiscalYears();
+  bar.classList.remove('hidden');
+  bar.classList.add('flex');
+  bar.innerHTML = `
+    <span class="text-xs text-white/70 hidden sm:inline">ปีงบ</span>
+    <select onchange="setFiscalYear(this.value)" class="text-sm bg-white/15 text-white rounded-lg px-2 py-1 outline-none cursor-pointer">
+      <option value="" class="text-gray-800" ${STATE.activeFiscalYear === '' ? 'selected' : ''}>ทั้งหมด</option>
+      ${years.map(y => `<option value="${y}" class="text-gray-800" ${String(STATE.activeFiscalYear) === String(y) ? 'selected' : ''}>${y}</option>`).join('')}
+    </select>`;
+}
+
+function setFiscalYear(y) {
+  STATE.activeFiscalYear = y;
+  renderPage(currentPage);
 }
 
 /* ====== 8) เมนู / นำทาง ====== */
@@ -208,7 +282,7 @@ function toggleSidebar() {
 function buildNav() {
   const menu = [
     { id: 'dashboard',  icon: 'layout-dashboard', label: 'แดชบอร์ด',        roles: ['admin','academic','secretary','teacher'] },
-    { id: 'courses',    icon: 'book-open',        label: 'จัดการรายวิชา',    roles: ['admin','academic','secretary','teacher'] },
+    { id: 'courses',    icon: 'book-open',        label: 'จัดการรายวิชา',    roles: ['admin','academic','secretary'] },
     { id: 'budgets',    icon: 'wallet',           label: 'จัดการงบประมาณ',   roles: ['admin','academic','secretary','teacher'] },
     { id: 'expenses',   icon: 'receipt',          label: 'บันทึกการใช้จ่าย', roles: ['admin','academic','secretary','teacher'] },
     { id: 'reports',    icon: 'bar-chart-3',      label: 'รายงาน',           roles: ['admin','academic','secretary','teacher'] },
@@ -257,8 +331,8 @@ function renderPage(page) {
 
 /* ====== 9) แดชบอร์ด ====== */
 function renderDashboard(container) {
-  const totalAllocated = STATE.budgets.reduce((s, b) => s + num(b.allocatedAmount), 0);
-  const totalSpent = STATE.expenses.reduce((s, e) => s + num(e.amount), 0);
+  const totalAllocated = activeBudgets().reduce((s, b) => s + num(b.allocatedAmount), 0);
+  const totalSpent = activeExpenses().reduce((s, e) => s + num(e.amount), 0);
   const remaining = totalAllocated - totalSpent;
   const percent = totalAllocated > 0 ? (totalSpent / totalAllocated * 100) : 0;
 
@@ -510,9 +584,9 @@ function renderBudgets(container) {
 
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
         ${STATE.categories.filter(c => c.active).map(cat => {
-          const catBudgets = STATE.budgets.filter(b => b.categoryId === cat.id);
+          const catBudgets = activeBudgets().filter(b => b.categoryId === cat.id);
           const catAllocated = catBudgets.reduce((s, b) => s + num(b.allocatedAmount), 0);
-          const catSpent = STATE.expenses.filter(e => e.categoryId === cat.id).reduce((s, e) => s + num(e.amount), 0);
+          const catSpent = activeExpenses().filter(e => e.categoryId === cat.id).reduce((s, e) => s + num(e.amount), 0);
           const catPercent = catAllocated > 0 ? (catSpent / catAllocated * 100) : 0;
           return `
             <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
@@ -534,6 +608,7 @@ function renderBudgets(container) {
         <table class="w-full text-sm">
           <thead class="bg-gray-50 border-b"><tr>
             <th class="text-left px-4 py-3 font-semibold text-gray-600">รายวิชา</th>
+            <th class="text-center px-4 py-3 font-semibold text-gray-600 hidden sm:table-cell">ปีงบ</th>
             <th class="text-left px-4 py-3 font-semibold text-gray-600 hidden md:table-cell">หมวดเงิน</th>
             <th class="text-right px-4 py-3 font-semibold text-gray-600">จัดสรร</th>
             <th class="text-right px-4 py-3 font-semibold text-gray-600">อัตรา/ชม.</th>
@@ -543,7 +618,7 @@ function renderBudgets(container) {
             ${canManageBudget() ? '<th class="text-center px-4 py-3 font-semibold text-gray-600">จัดการ</th>' : ''}
           </tr></thead>
           <tbody>
-            ${STATE.budgets.map(b => {
+            ${activeBudgets().map(b => {
               const course = STATE.courses.find(c => c.id === b.courseId);
               const cat = STATE.categories.find(c => c.id === b.categoryId);
               const spent = getTotalSpent(b.id);
@@ -552,6 +627,7 @@ function renderBudgets(container) {
               return `
                 <tr class="border-b hover:bg-gray-50">
                   <td class="px-4 py-3 font-medium">${course?.code || '-'} ${course?.name || ''}</td>
+                  <td class="px-4 py-3 text-center hidden sm:table-cell text-gray-500">${b.fiscalYear || '-'}</td>
                   <td class="px-4 py-3 hidden md:table-cell text-gray-500">${cat?.name || '-'}</td>
                   <td class="px-4 py-3 text-right">${formatNumber(b.allocatedAmount)}</td>
                   <td class="px-4 py-3 text-right">${formatNumber(b.ratePerHour)}</td>
@@ -571,16 +647,22 @@ function renderBudgets(container) {
 }
 
 function showBudgetForm() {
+  const fyOptions = getFiscalYears();
   document.getElementById('budget-form-area').innerHTML = `
     <div class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
       <div class="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 fade-in">
         <h3 class="text-lg font-bold text-primary mb-4">ตั้งงบประมาณใหม่</h3>
         <form onsubmit="saveBudget(event)" class="space-y-4">
-          <div><label class="block text-sm font-medium text-gray-700 mb-1">รายวิชา</label>
-            <select id="fb-course" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-secondary outline-none" required>
-              <option value="">-- เลือกรายวิชา --</option>
-              ${STATE.courses.map(c => `<option value="${c.id}">${c.code} - ${c.name} (${c.semester})</option>`).join('')}
-            </select></div>
+          <div class="grid grid-cols-2 gap-4">
+            <div><label class="block text-sm font-medium text-gray-700 mb-1">รายวิชา</label>
+              <select id="fb-course" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-secondary outline-none" required>
+                <option value="">-- เลือกรายวิชา --</option>
+                ${STATE.courses.map(c => `<option value="${c.id}">${c.code} - ${c.name} (${c.semester})</option>`).join('')}
+              </select></div>
+            <div><label class="block text-sm font-medium text-gray-700 mb-1">ปีงบประมาณ</label>
+              <input list="fy-list" id="fb-fy" value="${STATE.activeFiscalYear || currentThaiFiscalYear()}" placeholder="เช่น 2568" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-secondary outline-none" required>
+              <datalist id="fy-list">${fyOptions.map(y => `<option value="${y}">`).join('')}</datalist></div>
+          </div>
           <div><label class="block text-sm font-medium text-gray-700 mb-1">หมวดเงิน</label>
             <select id="fb-cat" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-secondary outline-none" required>
               ${STATE.categories.filter(c => c.active).map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
@@ -610,7 +692,8 @@ function saveBudget(e) {
     categoryId: document.getElementById('fb-cat').value,
     allocatedAmount: num(document.getElementById('fb-amount').value),
     ratePerHour: num(document.getElementById('fb-rate').value),
-    semester: course?.semester || ''
+    semester: course?.semester || '',
+    fiscalYear: document.getElementById('fb-fy').value.trim()
   };
   closeArea('budget-form-area');
   mutate(async () => { await api('createBudget', { data }); }, 'ตั้งงบประมาณเรียบร้อย');
@@ -638,7 +721,7 @@ function confirmDeleteBudget(id) {
 /* ====== 12) การใช้จ่าย ====== */
 function renderExpenses(container) {
   const isReadOnly = !canEdit();
-  const sorted = STATE.expenses.slice().sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+  const sorted = activeExpenses().slice().sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
   container.innerHTML = `
     <div class="fade-in">
       <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
@@ -713,15 +796,16 @@ function showExpenseForm() {
 
 function updateExpenseInfo() {
   const courseId = document.getElementById('fe-course').value;
-  const budgets = STATE.budgets.filter(b => b.courseId === courseId);
+  const budgets = STATE.budgets.filter(b => b.courseId === courseId)
+    .sort((a, b) => String(b.fiscalYear || '').localeCompare(String(a.fiscalYear || '')));
   const sel = document.getElementById('fe-budget-select');
   if (budgets.length > 0) {
     sel.innerHTML = `
-      <label class="block text-sm font-medium text-gray-700 mb-1">งบประมาณ (หมวดเงิน)</label>
+      <label class="block text-sm font-medium text-gray-700 mb-1">งบประมาณ (ปีงบ · หมวดเงิน)</label>
       <select id="fe-budget" onchange="calcExpenseAmount()" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-secondary outline-none" required>
         ${budgets.map(b => {
           const cat = STATE.categories.find(c => c.id === b.categoryId);
-          return `<option value="${b.id}">${cat?.name || '-'} (อัตรา ${formatNumber(b.ratePerHour)} บ./ชม. | จัดสรร ${formatNumber(b.allocatedAmount)} บ.)</option>`;
+          return `<option value="${b.id}">ปีงบ ${b.fiscalYear || '-'} · ${cat?.name || '-'} (อัตรา ${formatNumber(b.ratePerHour)} บ./ชม. | จัดสรร ${formatNumber(b.allocatedAmount)} บ.)</option>`;
         }).join('')}
       </select>`;
   } else {
@@ -785,6 +869,7 @@ function saveExpense(e) {
     hours,
     amount: hours * num(budget.ratePerHour),
     date: document.getElementById('fe-date').value,
+    fiscalYear: budget.fiscalYear || '',
     note: document.getElementById('fe-note').value,
     createdBy: currentUser?.username || ''
   };
@@ -844,7 +929,7 @@ function filterReport() {
   const dept = document.getElementById('rpt-dept')?.value || '';
   const catId = document.getElementById('rpt-cat')?.value || '';
 
-  let filtered = [...STATE.expenses];
+  let filtered = [...activeExpenses()];
   if (semester) {
     const ids = STATE.courses.filter(c => c.semester === semester).map(c => c.id);
     filtered = filtered.filter(e => ids.includes(e.courseId));
@@ -867,6 +952,7 @@ function filterReport() {
       <table class="w-full text-sm" id="report-data-table">
         <thead class="bg-gray-50 border-b"><tr>
           <th class="text-left px-4 py-3 font-semibold text-gray-600">วันที่</th>
+          <th class="text-center px-4 py-3 font-semibold text-gray-600 hidden sm:table-cell">ปีงบ</th>
           <th class="text-left px-4 py-3 font-semibold text-gray-600">รายวิชา</th>
           <th class="text-left px-4 py-3 font-semibold text-gray-600 hidden md:table-cell">สาขา</th>
           <th class="text-left px-4 py-3 font-semibold text-gray-600 hidden md:table-cell">หมวดเงิน</th>
@@ -881,6 +967,7 @@ function filterReport() {
             return `
               <tr class="border-b hover:bg-gray-50">
                 <td class="px-4 py-3">${exp.date}</td>
+                <td class="px-4 py-3 text-center hidden sm:table-cell text-gray-500">${exp.fiscalYear || '-'}</td>
                 <td class="px-4 py-3 font-medium">${course?.code || ''} ${course?.name || ''}</td>
                 <td class="px-4 py-3 hidden md:table-cell text-gray-500">${course?.department || ''}</td>
                 <td class="px-4 py-3 hidden md:table-cell text-gray-500">${cat?.name || ''}</td>
@@ -896,11 +983,11 @@ function filterReport() {
 }
 
 function exportCSV() {
-  const rows = [['วันที่', 'รหัสวิชา', 'ชื่อวิชา', 'สาขา', 'หมวดเงิน', 'อาจารย์', 'ชั่วโมง', 'จำนวนเงิน', 'หมายเหตุ']];
-  STATE.expenses.forEach(exp => {
+  const rows = [['ปีงบ', 'วันที่', 'รหัสวิชา', 'ชื่อวิชา', 'สาขา', 'หมวดเงิน', 'อาจารย์', 'ชั่วโมง', 'จำนวนเงิน', 'หมายเหตุ']];
+  activeExpenses().forEach(exp => {
     const course = STATE.courses.find(c => c.id === exp.courseId);
     const cat = STATE.categories.find(c => c.id === exp.categoryId);
-    rows.push([exp.date, course?.code || '', course?.name || '', course?.department || '', cat?.name || '', course?.teacher || '', exp.hours, exp.amount, exp.note || '']);
+    rows.push([exp.fiscalYear || '', exp.date, course?.code || '', course?.name || '', course?.department || '', cat?.name || '', course?.teacher || '', exp.hours, exp.amount, exp.note || '']);
   });
   const csv = '\uFEFF' + rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
