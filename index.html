@@ -76,7 +76,7 @@
         <button type="button" onclick="enterAsGuest()"
                 class="w-full border border-secondary text-secondary hover:bg-secondary hover:text-white font-medium py-3 rounded-lg transition-colors flex items-center justify-center gap-2">
           <i data-lucide="eye" style="width:18px;height:18px"></i>
-          เข้าดูข้อมูลสำหรับอาจารย์ (ไม่ต้องเข้าสู่ระบบ)
+          กลับไปดูข้อมูล (ไม่ต้องเข้าสู่ระบบ)
         </button>
       </div>
     </div>
@@ -94,7 +94,7 @@
         <div class="flex items-center gap-3">
           <div id="fy-bar" class="hidden items-center gap-2"></div>
           <span class="text-sm bg-white/10 px-3 py-1 rounded-full" id="user-info"></span>
-          <button onclick="handleLogout()" class="p-2 hover:bg-white/10 rounded-lg transition-colors" title="ออกจากระบบ">
+          <button id="auth-btn" class="p-2 hover:bg-white/10 rounded-lg transition-colors" title="ออกจากระบบ">
             <i data-lucide="log-out" style="width:18px;height:18px"></i>
           </button>
         </div>
