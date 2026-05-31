@@ -5,7 +5,7 @@
 
 /* ====== 1) ตั้งค่า ====== */
 // วาง Web app URL ที่ลงท้ายด้วย /exec ของคุณตรงนี้
-const APP_SCRIPT_URL = 'https://script.google.com/macros/s/XXXXXXXXXXXX/exec';
+const APP_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbygmzJSiM7mNOqkrWfpNy2oJDY8JFCUemDYo4CRPtGx0Cyocelqk8NAStjrJHtEMV6xUA/exec';
 
 // สาขา/ภาคเรียน ดึงจากข้อมูลจริงในชีต (รวมค่าที่เคยมีในรายวิชาทั้งหมด)
 // ฟอร์มใช้แบบพิมพ์ได้ + รายการแนะนำ จึงเพิ่มค่าใหม่ได้แม้ชีตยังว่าง
