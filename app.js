@@ -87,10 +87,12 @@ async function api(action, data) {
 function num(v) { const n = Number(v); return isNaN(n) ? 0 : n; }
 function toBool(v) { return v === true || v === 'TRUE' || v === 'true' || v === 1 || v === '1'; }
 
-// โหลดข้อมูลทั้งหมดเข้า STATE
+// โหลดข้อมูลทั้งหมดเข้า STATE (โหมดผู้เข้าชมไม่ดึงรายชื่อผู้ใช้)
 async function loadAll() {
+  const isGuest = currentUser && currentUser.id === 'guest';
   const [users, courses, categories, budgets, expenses] = await Promise.all([
-    api('getUsers'), api('getCourses'), api('getCategories'), api('getBudgets'), api('getExpenses')
+    isGuest ? Promise.resolve([]) : api('getUsers'),
+    api('getCourses'), api('getCategories'), api('getBudgets'), api('getExpenses')
   ]);
   STATE.users      = (users || []);
   STATE.courses    = (courses || []).map(c => ({ ...c, hours: num(c.hours) }));
@@ -198,6 +200,7 @@ async function handleLogin(e) {
     document.getElementById('user-info').textContent = `${user.fullName} (${getRoleName(user.role)})`;
     buildNav();
     renderFiscalBar();
+    renderAuthButton();
     navigateTo('dashboard');
     showToast(`ยินดีต้อนรับ ${user.fullName}`);
   } catch (e2) {
@@ -222,9 +225,12 @@ async function enterAsGuest() {
     document.getElementById('user-info').textContent = `${currentUser.fullName} · อ่านอย่างเดียว`;
     buildNav();
     renderFiscalBar();
+    renderAuthButton();
     navigateTo('dashboard');
   } catch (e2) {
     currentUser = null;
+    document.getElementById('main-app').classList.add('hidden');
+    document.getElementById('login-page').classList.remove('hidden');
     const err = document.getElementById('login-error');
     err.classList.remove('hidden');
     err.textContent = e2.message;
@@ -233,17 +239,35 @@ async function enterAsGuest() {
   }
 }
 
+// ออกจากระบบ → กลับสู่โหมดดูข้อมูล (อ่านอย่างเดียว)
 function handleLogout() {
-  currentUser = null;
-  STATE.users = []; STATE.courses = []; STATE.categories = []; STATE.budgets = []; STATE.expenses = [];
-  STATE.activeFiscalYear = '';
-  const bar = document.getElementById('fy-bar');
-  if (bar) { bar.classList.add('hidden'); bar.innerHTML = ''; }
-  document.getElementById('main-app').classList.add('hidden');
-  document.getElementById('login-page').classList.remove('hidden');
   document.getElementById('username').value = '';
   document.getElementById('password').value = '';
+  enterAsGuest();
+}
+
+// แสดงหน้าเข้าสู่ระบบ (สำหรับเจ้าหน้าที่ที่ต้องการแก้ไข)
+function showLoginPage() {
+  document.getElementById('main-app').classList.add('hidden');
+  document.getElementById('login-page').classList.remove('hidden');
   document.getElementById('login-error').classList.add('hidden');
+}
+
+// ปุ่มมุมขวาบน: เป็น "เข้าสู่ระบบ" เมื่อเป็นผู้เข้าชม / "ออกจากระบบ" เมื่อล็อกอินแล้ว
+function renderAuthButton() {
+  const btn = document.getElementById('auth-btn');
+  if (!btn) return;
+  const isGuest = currentUser && currentUser.id === 'guest';
+  if (isGuest) {
+    btn.title = 'เข้าสู่ระบบ (เจ้าหน้าที่)';
+    btn.innerHTML = '<i data-lucide="log-in" style="width:18px;height:18px"></i>';
+    btn.onclick = showLoginPage;
+  } else {
+    btn.title = 'ออกจากระบบ';
+    btn.innerHTML = '<i data-lucide="log-out" style="width:18px;height:18px"></i>';
+    btn.onclick = handleLogout;
+  }
+  lucide.createIcons();
 }
 
 // แถบเลือกปีงบประมาณบนหัวเรื่อง
@@ -1172,4 +1196,7 @@ document.addEventListener('DOMContentLoaded', () => {
     sb.classList.add('-translate-x-full', 'w-0');
     sb.classList.remove('w-64');
   }
+  // ซ่อนหน้าเข้าสู่ระบบไว้ก่อน แล้วโหลดข้อมูลจากชีตเข้าโหมดดูทันที
+  document.getElementById('login-page').classList.add('hidden');
+  enterAsGuest();
 });
