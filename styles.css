@@ -1,0 +1,44 @@
+/* ===== styles.css =====
+   สไตล์เสริมที่ใช้ร่วมกับ Tailwind (สี/ฟอนต์หลักตั้งค่าใน index.html) */
+
+* { font-family: 'Sarabun', sans-serif; }
+
+body { box-sizing: border-box; }
+
+/* แอนิเมชันแถบเมนูด้านข้าง */
+.sidebar-transition {
+  transition: width 0.3s ease, transform 0.3s ease;
+}
+
+/* แอนิเมชันตอนเปลี่ยนหน้า */
+.fade-in {
+  animation: fadeIn 0.3s ease;
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* การ์ดแจ้งเตือน (toast) */
+.toast {
+  animation: slideIn 0.3s ease, fadeOut 0.3s ease 2.7s;
+}
+@keyframes slideIn {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+@keyframes fadeOut {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+/* วงกลมหมุนตอนโหลด */
+@keyframes spin { to { transform: rotate(360deg); } }
+.animate-spin { animation: spin 0.8s linear infinite; }
+
+/* ตอนสั่งพิมพ์ ให้ซ่อนเมนู/ปุ่มต่าง ๆ */
+@media print {
+  .no-print { display: none !important; }
+  body { overflow: visible !important; }
+  #main-content { overflow: visible !important; padding: 0 !important; }
+}
