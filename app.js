@@ -1194,7 +1194,7 @@ document.addEventListener('DOMContentLoaded', () => {
     sb.classList.add('-translate-x-full', 'w-0');
     sb.classList.remove('w-64');
   }
-  // ซ่อนหน้าเข้าสู่ระบบไว้ก่อน แล้วโหลดข้อมูลจากชีตเข้าโหมดดูทันที
-  document.getElementById('login-page').classList.add('hidden');
-  enterAsGuest();
+  // แสดงหน้าเข้าสู่ระบบก่อนเสมอ (ผู้ใช้กดปุ่ม "กลับไปดูข้อมูล" เพื่อเข้าโหมดดูเองได้)
+  document.getElementById('main-app').classList.add('hidden');
+  document.getElementById('login-page').classList.remove('hidden');
 });
