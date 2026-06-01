@@ -90,10 +90,8 @@ function toBool(v) { return v === true || v === 'TRUE' || v === 'true' || v === 
 // โหลดข้อมูลทั้งหมดเข้า STATE (โหมดผู้เข้าชมไม่ดึงรายชื่อผู้ใช้)
 async function loadAll() {
   const isGuest = currentUser && currentUser.id === 'guest';
-  const [users, courses, categories, budgets, expenses] = await Promise.all([
-    isGuest ? Promise.resolve([]) : api('getUsers'),
-    api('getCourses'), api('getCategories'), api('getBudgets'), api('getExpenses')
-  ]);
+  const all = await api('getAll', { includeUsers: !isGuest }) || {};
+  const { users, courses, categories, budgets, expenses } = all;
   STATE.users      = (users || []);
   STATE.courses    = (courses || []).map(c => ({ ...c, hours: num(c.hours) }));
   STATE.categories = (categories || []).map(c => ({ ...c, active: toBool(c.active) }));
